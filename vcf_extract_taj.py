@@ -1,0 +1,153 @@
+#!/usr/bin/env python
+"""This script will extract snps from a vcf file."""
+
+import os, sys, operator
+
+def getOpts():
+    from optparse import OptionParser
+    parser = OptionParser()
+    parser.add_option('-i', '--input', dest='infile', help="Input vcf file", metavar="INFILE")
+    parser.add_option('-o', '--output', dest='outfile', help="Output fasta file", metavar="OUTFILE")
+    parser.add_option('-q', '--quality', dest='quality', type="int", help="QUAL cutoff, optionsl", metavar="QUALITY")
+    parser.add_option('-d', '--distance', dest='distance', type="int", help="Distance filter (minimal distance between bases)", metavar="DISTANCE")
+    parser.add_option('-v', '--verbose', action='store_true', help="Verbose output", metavar="VERBOSE")
+    (opts, args) = parser.parse_args()
+    infile_arg = ''
+    outfile_arg = ''
+    if (not opts.infile) and (len(args) == 0):
+        print "You must provide at least the input file name.\n"
+        usage()
+        sys.exit("Wrong input(s) detected\n")
+    if len(args) == 1:
+        if opts.verbose:
+            print "It looks like you provided the input file as an argument. The output filename will be automatically generated. No quality filtering will be performed.\n"
+            print "Input file: %s.\n" % args[0]
+        infile_arg = args[0]
+        outfile_arg = os.path.splitext(infile_arg)[0] + ".fa"
+        if opts.verbose:
+            print "The output file will be called %s\n" % outfile_arg
+    if not infile_arg:
+        if opts.infile:
+            infile_arg = opts.infile
+        else:
+            usage()
+            sys.exit("Please provide an input file name\n")
+    if opts.outfile:
+        outfile_arg = opts.outfile
+    quality_arg = -1
+    distance_arg = -1
+    if not outfile_arg:
+        outfile_arg = os.path.splitext(infile_arg)[0] + ".fa"
+    if opts.quality:
+        quality_arg = opts.quality
+    if opts.distance:
+        distance_arg = opts.distance
+    if opts.verbose:
+        print "Input file: %s" % infile_arg
+        print "Output file: %s" % outfile_arg
+        if quality_arg != -1:
+            print "Quality cutoff: %d" % quality_arg
+        else:
+            print "Quality cutoff is not set"
+        if distance_arg != -1:
+            print "Distance filter: %d" % distance_arg
+        else:
+            print "Distance filter is not set"
+
+    return (infile_arg, outfile_arg, quality_arg, distance_arg)
+
+def usage():
+    print """Usage: ./vcf_extract_taj.py [options]
+
+                Options: 
+                    -h, --help            show this help message and exit
+                    -i INFILE, --input=INFILE
+                                        Input vcf file
+                    -o OUTFILE, --output=OUTFILE
+                                        Output fasta file
+
+                Alternatively provide input and output file names as arguments:
+                     ./vcf_extract_taj.py input.vcf output.fa
+          """
+
+def getHeader(infile):
+    fh = open(infile, 'r')
+    for line in fh:
+        if line.strip().startswith('##'):
+            pass
+        elif line.strip().startswith('#CHROM'):
+            header = line.strip()
+            return (header, fh)
+        else:
+            return ('', fh)
+
+def parseInput(header, fh):
+    """
+    Example header:
+
+    #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT
+    WCH0162_SM      SJN1 1_SM       SJN15_SM        SJN12_SM        SJN01_SM
+    SJN13_SM        WCH0155_SM      SJN02_SM        WCH0172_SM      SJN0 3_SM
+    WCH0170_SM      SJN04_SM        WCH0149_SM      SJN05_SM        WCH0164_SM
+    SJN06_SM        WCH0182_SM       SJN08_SM       SJN07_SM        WCH0151_SM
+    WCH0150_SM      WCH0127_SM      SJN16_SM        SJN14_SM        SJN10_S M
+    SJN09_SM        SJN17_SM
+
+    Example data:
+    """
+#    example = """gi|87125858|gb| CP000255.1|	2863880	.	A	G	2960.84	.	AB=0;ABP=0;AC=6;AF=0.222222;AN=27;AO=102 ;CIGAR=1X;DP=7273;DPRA=0.509969;EPP=215.9;EPPR=4.53721;HWE=-0;LEN=1;MEANALT= 1;MQM=13.8725;MQMR=54.9476;NS=27;NUMALT=1;ODDS=74.4167;PAIRED=0.990196;PAIRE DR=0.992468;RO=7169;RPP=215.9;RPPR=15070.6;RUN=1;SAP=224.5;SRP=3.11965;TYPE= snp;XAI=0.00886278;XAM=0.00929294;XAS=0.000430161;XRI=1.23666e-05;XRM=0.0008 01506;XRS=0.000789139;technology.ILLUMINA=1;BVAR	GT:GQ:DP:RO:QR:AO:QA:GL	0:5 0000:414:414:15906:0:0:0,-1431.92	0:50000:334:334:12912:0:0:0,-1162.47	1:500 00:29:0:0:29:1056:-95.4041,0	0:50000:269:269:10281:0:0:0,-925.672	1:50000:14 :0:0:14:519:-47.0807,0	0:50000:441:441:16891:0:0:0,-1520.57	0:50000:311:311: 11916:0:0:0,-1072.82	1:50000:15:1:40:14:493:-44.7221,-4	0:50000:334:333:1278 3:1:24:-2.4,-1150.85	1:50000:14:0:0:14:521:-47.2621,0	0:50000:345:345:13321: 0:0:0,-1199.28	0:50000:181:181:6920:0:0:0,-623.182	0:50000:336:336:12882:0:0 :0,-1159.76	0:50000:423:423:16229:0:0:0,-1460.99	0:50000:283:283:10902:0:0:0 ,-981.565	1:50000:16:2:65:14:529:-47.9879,-6.175	0:50000:514:514:19905:0:0:0 ,-1791.84	0:50000:377:374:14472:3:118:-11.0133,-1302.87	0:50000:368:367:1410 1:1:39:-3.9,-1269.47	0:50000:267:267:10237:0:0:0,-921.713	0:50000:226:226:87 00:0:0:0,-783.385	1:50000:10:0:0:10:362:-32.942,0	0:50000:377:376:14405:1:9: -0.9,-1296.83	0:50000:334:333:12842:1:41:-4.1,-1156.17	0:50000:262:262:10073 :0:0:0,-906.954	0:50000:495:493:19004:0:0:-3.895,-1714.43	0:50000:284:284:10 969:0:0:0,-987.596"""
+    all_data = []
+    header_list = header.split('\t')
+    header_list[0] = "CHROM"
+    short_header = list(operator.itemgetter(0,1,3,4,5)(header_list))
+    samples = operator.itemgetter(slice(9,None))(header_list)
+    short_header.extend(samples)
+    all_data.append(short_header)
+    for line in fh:
+        try:
+            raw_input_data = line.strip().split('\t')
+            header_data = list(operator.itemgetter(0,1,3,4,5)(raw_input_data))
+            sample_data = []
+            raw_sample_data = operator.itemgetter(slice(9,None))(raw_input_data)
+            for i in raw_sample_data:
+                sample_data.append(i.strip().split(':')[0])
+            header_data.extend(sample_data)
+            all_data.append(header_data)
+        except IOError:
+            continue
+        except IndexError:
+            continue
+    fh.close()
+    return all_data
+
+def writeOutput(outfile, data):
+    fh = open(outfile, 'w')
+    for line in data:
+        fh.write(",".join(line) + os.linesep)
+    fh.close()
+
+def generateFasta(source_data):
+    reference = []
+    samples = {}
+    header = source_data[0]
+    data = source_data[1:]
+    sample_names = ", ".join(header[5:])
+    print "\nSample names: %s\n" % sample_names
+    echo = 0
+    print "\nSamples:"
+    while True:
+        if echo < 10:
+            print data[echo]
+            echo += 1
+        else:
+            break
+    return []
+
+if __name__=='__main__':
+    infile, outfile, quality, distance = getOpts()
+#    print "Input: '%s'\nOutput: '%s'\n" % (infile_arg, outfile_arg)
+    (header, data_handle) = getHeader(infile)
+    source_data = parseInput(header, data_handle)
+    writeOutput('source_data.txt', source_data)
+    all_data = generateFasta(source_data)
+#    writeOutput(outfile, all_data)
