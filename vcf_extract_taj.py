@@ -3,28 +3,31 @@
 
 import os, sys, operator
 
-def getOpts():
+def get_arguments():
     from optparse import OptionParser
     parser = OptionParser()
     parser.add_option('-i', '--input', dest='infile', help="Input vcf file", metavar="INFILE")
     parser.add_option('-o', '--output', dest='outfile', help="Output fasta file", metavar="OUTFILE")
     parser.add_option('-q', '--quality', dest='quality', type="int", help="QUAL cutoff, optionsl", metavar="QUALITY")
     parser.add_option('-d', '--distance', dest='distance', type="int", help="Distance filter (minimal distance between bases)", metavar="DISTANCE")
-    parser.add_option('-v', '--verbose', action='store_true', help="Verbose output", metavar="VERBOSE")
+    parser.add_option('-v', '--verbose', action='store_true', default=False, help="Verbose output", metavar="VERBOSE")
     (opts, args) = parser.parse_args()
     infile_arg = ''
     outfile_arg = ''
+    verbose_arg = False
+    if opts.verbose:
+        verbose_arg = opts.verbose
     if (not opts.infile) and (len(args) == 0):
         print "You must provide at least the input file name.\n"
         usage()
         sys.exit("Wrong input(s) detected\n")
     if len(args) == 1:
-        if opts.verbose:
+        if verbose_arg:
             print "It looks like you provided the input file as an argument. The output filename will be automatically generated. No quality filtering will be performed.\n"
             print "Input file: %s.\n" % args[0]
         infile_arg = args[0]
         outfile_arg = os.path.splitext(infile_arg)[0] + ".fa"
-        if opts.verbose:
+        if verbose_arg:
             print "The output file will be called %s\n" % outfile_arg
     if not infile_arg:
         if opts.infile:
@@ -42,7 +45,7 @@ def getOpts():
         quality_arg = opts.quality
     if opts.distance:
         distance_arg = opts.distance
-    if opts.verbose:
+    if verbose_arg:
         print "Input file: %s" % infile_arg
         print "Output file: %s" % outfile_arg
         if quality_arg != -1:
@@ -53,8 +56,7 @@ def getOpts():
             print "Distance filter: %d" % distance_arg
         else:
             print "Distance filter is not set"
-
-    return (infile_arg, outfile_arg, quality_arg, distance_arg)
+    return (infile_arg, outfile_arg, quality_arg, distance_arg, verbose_arg)
 
 def usage():
     print """Usage: ./vcf_extract_taj.py [options]
@@ -70,7 +72,7 @@ def usage():
                      ./vcf_extract_taj.py input.vcf output.fa
           """
 
-def getHeader(infile):
+def get_header(verbose, infile):
     fh = open(infile, 'r')
     for line in fh:
         if line.strip().startswith('##'):
@@ -81,7 +83,7 @@ def getHeader(infile):
         else:
             return ('', fh)
 
-def parseInput(header, fh):
+def parse_input(verbose, header, fh):
     """
     Example header:
 
@@ -118,36 +120,140 @@ def parseInput(header, fh):
         except IndexError:
             continue
     fh.close()
+    if verbose:
+        num_all_entries = len(all_data) - 1
+        print "Read %d entries from the input file.\n" % num_all_entries
     return all_data
 
-def writeOutput(outfile, data):
+def write_output(verbose, outfile, data):
     fh = open(outfile, 'w')
     for line in data:
         fh.write(",".join(line) + os.linesep)
     fh.close()
 
-def generateFasta(source_data):
+def quality_filter(verbose, quality, original_data):
+    qual = float(quality)
+    num_original_entries = len(original_data)
+    if verbose:
+        print "Received %d entries for quality filtering with a %.1f cutoff.\n" % (num_original_entries, qual)
+    filtered_data = []
+    if verbose:
+        print "Quality cutoff: %.1f\n" % qual
+    for entry in original_data:
+        entry_quality = str(entry[4])
+        entry_quality = entry_quality.replace(' ','')
+#        print "Quality: '%s'\n" % entry_quality
+        if float(entry_quality) > qual:
+            filtered_data.append(entry)
+#    print "\nQuality filtered data:\n"
+#    print quality_filtered_data
+    num_filtered_entries = len(filtered_data)
+    if verbose:
+        print "After the quality filtering %d entries remain.\n" % (num_filtered_entries)
+    return filtered_data
+
+def distance_filter(verbose, distance, original_data):
+    num_original_entries = len(original_data)
+    if verbose:
+        print "Received %d entries for distance filtering with a %d interval.\n" % (num_original_entries, distance)
+    filtered_data = []
+    discarded_data = []
+    distances = []
+    discarded_distances = []
+    first = original_data[0]
+    second = original_data[1]
+    last = original_data[-1]
+    before_last = original_data[-2]
+    before_before_last = original_data[-3]
+    if int(second[1]) > (int(first[1]) + distance):
+        filtered_data.append(first)
+        distances.append(first[1])
+    else:
+        discarded_data.append(first)
+        discarded_distances.append(first[1])
+    tail = original_data[0]
+    mid = original_data[1]
+    head = original_data[2]
+    for entry in original_data[3:]:
+        if (int(tail[1]) + distance) <  int(mid[1]) < (int(head[1]) - distance):
+            filtered_data.append(mid)
+            distances.append(mid[1])
+        else:
+            discarded_data.append(mid)
+            discarded_distances.append(mid[1])
+#            if verbose:
+#                print "Distance filter triggered on:"
+#            print "Previous: ", tail
+#                print "Discarded: ", mid
+#            print "Next: ", head
+        tail = mid
+        mid = head
+        head = entry
+    if int(before_last[1]) > (int(before_before_last[1]) + distance):
+        filtered_data.append(before_last)
+        distances.append(before_last[1])
+    else:
+        discarded_data.append(before_last)
+        discarded_distances.append(before_last[1])
+    if int(last[1]) > (int(before_last[1]) + distance):
+        filtered_data.append(last)
+        distances.append(last[1])
+    else:
+        discarded_data.append(last)
+        discarded_distances.append(last[1])
+    num_filtered_entries = len(filtered_data)
+    num_discarded_entries = len(discarded_data)
+    if verbose:
+        print "After the distance filtering %d entries remain. %d entries were discarded\n" % (num_filtered_entries, num_discarded_entries)
+    return filtered_data
+
+def convert_to_fasta(verbose, original_data):
+    pass
+
+def generate_fasta(verbose, source_data, quality, distance):
     reference = []
     samples = {}
     header = source_data[0]
-    data = source_data[1:]
-    sample_names = ", ".join(header[5:])
-    print "\nSample names: %s\n" % sample_names
-    echo = 0
-    print "\nSamples:"
-    while True:
-        if echo < 10:
-            print data[echo]
-            echo += 1
-        else:
-            break
-    return []
+    original_data = source_data[1:]
+    specimen = header[5:]
+    sample_names = ", ".join(specimen)
+    if verbose:
+        print "Sample names: %s\n" % sample_names
+        echo = 0
+        print "Samples (1-5):"
+        while True:
+            if echo < 5:
+                print original_data[echo]
+                echo += 1
+            else:
+                break
+    seq_data = {}
+    for sample in specimen:
+        seq_data[sample] = []
+    #Quality filter
+    if quality != -1:
+        quality_filtered_data = quality_filter(verbose, quality, original_data)
+    else:
+        quality_filtered_data = original_data
+    #Distance filter
+    if distance != -1:
+        distance_filtered_data = distance_filter(verbose, distance, quality_filtered_data)
+    else:
+        distance_filtered_data = quality_filtered_data
+    #Generate Fasta Data
+    fasta_data = convert_to_fasta(verbose, distance_filtered_data)
+    return fasta_data
+
+def write_output(verbose, filename, data):
+    #FIXME
+    pass
 
 if __name__=='__main__':
-    infile, outfile, quality, distance = getOpts()
+    infile, outfile, quality, distance, verbose = get_arguments()
+    if verbose:
+        print "Verbose output has been requested.\n"
 #    print "Input: '%s'\nOutput: '%s'\n" % (infile_arg, outfile_arg)
-    (header, data_handle) = getHeader(infile)
-    source_data = parseInput(header, data_handle)
-    writeOutput('source_data.txt', source_data)
-    all_data = generateFasta(source_data)
-#    writeOutput(outfile, all_data)
+    (header, data_handle) = get_header(verbose, infile)
+    source_data = parse_input(verbose, header, data_handle)
+    fasta_data = generate_fasta(verbose, source_data, quality, distance)
+    write_output(verbose, outfile, fasta_data)
