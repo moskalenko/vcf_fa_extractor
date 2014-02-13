@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""This script will extract snps from a vcf file.
+"""This script will extract snps from a vcf file and produce a multi-fasta
+output with extracted reference and all variant sequences.
 Author: Oleksandr Moskalenko <om@hpc.ufl.edu>
 Version: 1.1
 Date: 2014-02-13
