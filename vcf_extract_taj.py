@@ -207,29 +207,55 @@ def distance_filter(verbose, distance, original_data):
         print "After the distance filtering %d entries remain. %d entries were discarded\n" % (num_filtered_entries, num_discarded_entries)
     return filtered_data
 
-def convert_to_fasta(verbose, original_data):
-    pass
-
-def generate_fasta(verbose, source_data, quality, distance):
-    reference = []
+def convert_to_fasta(verbose, header, filtered_data):
     samples = {}
+    seq_data = {}
+    for sample in specimen:
+        seq_data[sample] = []
+    seq_data["reference"] = []
+    for entry in filtered_data:
+        ref_seq = entry[2].strip()
+        alt_seq = entry[3].strip().split(',')
+        snps = entry[5:]
+        if len(header) != len(snps):
+            sys.exit("Error: Number of specimen in the header and the sequence data does not match.")
+        seq_data["reference"].append(ref_seq)
+        for sample in header:
+            sample_id = header.index(sample)
+            snp = snps[sample_id]
+#            if verbose:
+#                print "SNP: %s" % snp
+            if snp == '.':
+                snp_value = alt_seq[0]
+            else:
+                try:
+                    snp = int(snp)
+                except:
+                    sys.exit("Error: SNP call is not a '.' or an integer in the (0-n) range.")
+                if snp == 0:
+                    snp_value = ref_seq
+                else:
+                    alt_snp = snp - 1
+                    snp_value = alt_seq[alt_snp]
+            seq_data[sample].append(snp_value)
+    return seq_data
+
+def filter_data(verbose, source_data, quality, distance):
+    reference = []
     header = source_data[0]
     original_data = source_data[1:]
     specimen = header[5:]
     sample_names = ", ".join(specimen)
     if verbose:
         print "Sample names: %s\n" % sample_names
-        echo = 0
-        print "Samples (1-5):"
-        while True:
-            if echo < 5:
-                print original_data[echo]
-                echo += 1
-            else:
-                break
-    seq_data = {}
-    for sample in specimen:
-        seq_data[sample] = []
+#        echo = 0
+#        print "Samples (1-5):"
+#        while True:
+#            if echo < 5:
+#                print original_data[echo]
+#                echo += 1
+#            else:
+#                break
     #Quality filter
     if quality != -1:
         quality_filtered_data = quality_filter(verbose, quality, original_data)
@@ -240,13 +266,27 @@ def generate_fasta(verbose, source_data, quality, distance):
         distance_filtered_data = distance_filter(verbose, distance, quality_filtered_data)
     else:
         distance_filtered_data = quality_filtered_data
-    #Generate Fasta Data
-    fasta_data = convert_to_fasta(verbose, distance_filtered_data)
-    return fasta_data
+    return (specimen, distance_filtered_data)
 
 def write_output(verbose, filename, data):
-    #FIXME
-    pass
+    if verbose:
+        print "Writing the fasta formatted data to the '%s' file\n" % filename
+    try:
+        fh = open(filename, 'w')
+    except:
+        sys.exit("Cannot open output file for writing.")
+    reference_list = data["reference"]
+    reference_fa = "".join(reference_list)
+    fh.write('>reference\n')
+    fh.write(reference_fa)
+    fh.write("\n")
+    for specimen in data:
+        if specimen != 'reference':
+            specimen_name = ">" + specimen + "\n"
+            specimen_fa = "".join(data[specimen]) + "\n"
+            fh.write(specimen_name)
+            fh.write(specimen_fa)
+    fh.close()
 
 if __name__=='__main__':
     infile, outfile, quality, distance, verbose = get_arguments()
@@ -255,5 +295,8 @@ if __name__=='__main__':
 #    print "Input: '%s'\nOutput: '%s'\n" % (infile_arg, outfile_arg)
     (header, data_handle) = get_header(verbose, infile)
     source_data = parse_input(verbose, header, data_handle)
-    fasta_data = generate_fasta(verbose, source_data, quality, distance)
+    specimen, filtered_data = filter_data(verbose, source_data, quality, distance)
+    fasta_data = convert_to_fasta(verbose, specimen, filtered_data)
     write_output(verbose, outfile, fasta_data)
+    if verbose:
+        print "Done processing the vcf file. Good bye!\n"
