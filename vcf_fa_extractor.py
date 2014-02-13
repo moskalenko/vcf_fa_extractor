@@ -226,7 +226,7 @@ def convert_to_fasta(verbose, header, filtered_data):
 #            if verbose:
 #                print "SNP: %s" % snp
             if snp == '.':
-                snp_value = alt_seq[0]
+                snp_value = '?'
             else:
                 try:
                     snp = int(snp)
