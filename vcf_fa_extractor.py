@@ -1,5 +1,9 @@
 #!/usr/bin/env python
-"""This script will extract snps from a vcf file."""
+"""This script will extract snps from a vcf file.
+Author: Oleksandr Moskalenko <om@hpc.ufl.edu>
+Version: 1.1
+Date: 2014-02-13
+"""
 
 import os, sys, operator
 
