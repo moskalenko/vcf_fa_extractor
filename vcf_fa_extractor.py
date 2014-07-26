@@ -2,82 +2,60 @@
 """This script will extract snps from a vcf file and produce a multi-fasta
 output with extracted reference and all variant sequences.
 Author: Oleksandr Moskalenko <om@hpc.ufl.edu>
-Version: 1.1
-Date: 2014-02-13
+Version: 1.2
+Date: 2014-07-25
 """
+version="1.2"
 
-import os, sys, operator
+import os, sys, operator, logging
+import argparse
 
-def get_arguments():
-    from optparse import OptionParser
-    parser = OptionParser()
-    parser.add_option('-i', '--input', dest='infile', help="Input vcf file", metavar="INFILE")
-    parser.add_option('-o', '--output', dest='outfile', help="Output fasta file", metavar="OUTFILE")
-    parser.add_option('-q', '--quality', dest='quality', type="int", help="QUAL cutoff, optionsl", metavar="QUALITY")
-    parser.add_option('-d', '--distance', dest='distance', type="int", help="Distance filter (minimal distance between bases)", metavar="DISTANCE")
-    parser.add_option('-v', '--verbose', action='store_true', default=False, help="Verbose output", metavar="VERBOSE")
-    (opts, args) = parser.parse_args()
-    infile_arg = ''
-    outfile_arg = ''
-    verbose_arg = False
-    if opts.verbose:
-        verbose_arg = opts.verbose
-    if (not opts.infile) and (len(args) == 0):
-        print "You must provide at least the input file name.\n"
-        usage()
-        sys.exit("Wrong input(s) detected\n")
-    if len(args) == 1:
-        if verbose_arg:
-            print "It looks like you provided the input file as an argument. The output filename will be automatically generated. No quality filtering will be performed.\n"
-            print "Input file: %s.\n" % args[0]
-        infile_arg = args[0]
-        outfile_arg = os.path.splitext(infile_arg)[0] + ".fa"
-        if verbose_arg:
-            print "The output file will be called %s\n" % outfile_arg
-    if not infile_arg:
-        if opts.infile:
-            infile_arg = opts.infile
-        else:
-            usage()
-            sys.exit("Please provide an input file name\n")
-    if opts.outfile:
-        outfile_arg = opts.outfile
-    quality_arg = -1
-    distance_arg = -1
-    if not outfile_arg:
-        outfile_arg = os.path.splitext(infile_arg)[0] + ".fa"
-    if opts.quality:
-        quality_arg = opts.quality
-    if opts.distance:
-        distance_arg = opts.distance
-    if verbose_arg:
-        print "Input file: %s" % infile_arg
-        print "Output file: %s" % outfile_arg
-        if quality_arg != -1:
-            print "Quality cutoff: %d" % quality_arg
+def get_arguments(logger):
+    parser = argparse.ArgumentParser(usage='%(prog)s [options] -i input_file [-o output_file]', epilog="You must at least provide the input file name")
+    parser.add_argument('-i', '--input', dest='infile', help="Input vcf file")
+    parser.add_argument('-o', '--output', dest='outfile', help="Output fasta file")
+    parser.add_argument('-t', '--table', dest='headertable', 
+        help="Output an extended info header table to a file")
+    parser.add_argument('-q', '--quality', dest='quality', type=int, default=-1, help="QUAL cutoff, optionsl")
+    parser.add_argument('-d', '--distance', dest='distance', type=int,
+            default=-1, help="Distance filter (minimal distance between bases)")
+    parser.add_argument('-s', '--snpeff', action="store_true", dest='snpeff',
+            default=False, help="Parse SnpEFF produced extended INFO field")
+    parser.add_argument('-v', '--verbose', action='store_true', default=False,
+            help="Verbose output")
+    args = parser.parse_args()
+    if (not args.infile):
+        parser.print_help()
+        sys.exit(1)
+    else:
+        if not os.access(args.infile, os.R_OK):
+            sys.exit("Cannot access input file")
+    if not args.outfile:
+        args.outfile = os.path.splitext(args.infile)[0] + ".fa"
+        if args.verbose:
+            logger.debug("It looks like you provided the input file as an argument. The output filename will be automatically generated. No quality filtering will be performed.")
+            logger.debug("Input file: {0}".format(args.infile))
+            logger.debug("The output file will be called %s\n" % args.outfile)
+    if args.verbose:
+        print "Input file: \t%s" % args.infile
+        print "Output file:\t%s" % args.outfile
+        if args.quality != -1:
+            print "Quality cutoff: %d" % args.quality
         else:
             print "Quality cutoff is not set"
-        if distance_arg != -1:
-            print "Distance filter: %d" % distance_arg
+        if args.distance != -1:
+            print "Distance filter: %d" % args.distance
         else:
             print "Distance filter is not set"
-    return (infile_arg, outfile_arg, quality_arg, distance_arg, verbose_arg)
-
-def usage():
-    print """Usage: ./vcf_extract_taj.py [options]
-
-                Options: 
-                    -h, --help            show this help message and exit
-                    -i INFILE, --input=INFILE
-                                        Input vcf file
-                    -o OUTFILE, --output=OUTFILE
-                                        Output fasta file
-
-                Alternatively provide input and output file names as arguments:
-                     ./vcf_extract_taj.py input.vcf output.fa
-          """
+    return (args)
 
 def get_header(verbose, infile):
+    #FIXME
+    try:
+        input_fh = open(args.infile, 'r')
+    except IOError:
+        print 'Cannot open input file', arg
+
     fh = open(infile, 'r')
     for line in fh:
         if line.strip().startswith('##'):
@@ -130,11 +108,30 @@ def parse_input(verbose, header, fh):
         print "Read %d entries from the input file.\n" % num_all_entries
     return all_data
 
+def parse_snpeff_info(verbose, data):
+    # INFO=<ID=EFF,Number=.,Type=String,Description="Predicted effects for this variant.Format: 'Effect ( Effect_Impact | Functional_Class | Codon_Change | Amino_Acid_change| Amino_Acid_length | Gene_Name | Gene_BioType | Coding | Transcript | Exon  | GenotypeNum [ | ERRORS | WARNINGS ] )' ">
+    if verbose:
+        #FIXME
+        log
+    print data
+    sys.exit("DEBUG 0")
+
 def write_output(verbose, outfile, data):
     fh = open(outfile, 'w')
     for line in data:
         fh.write(",".join(line) + os.linesep)
     fh.close()
+
+def write_header_table(verbose, outfile, data):
+    # Chromosome | Position | Effect | Codon_Change | Amino_acid_change | Gene_Name | Sample 1 (yes/no) | Sample 2 (yes,no) 
+    try:
+        fh = open(outfile, 'w')
+    except:
+        sys.exit("Could not open the header table file for writing.\n")
+    for line in data:
+        fh.write(",".join(line) + os.linesep)
+    fh.close()
+
 
 def quality_filter(verbose, quality, original_data):
     qual = float(quality)
@@ -294,11 +291,20 @@ def write_output(verbose, filename, data):
     fh.close()
 
 if __name__=='__main__':
-    infile, outfile, quality, distance, verbose = get_arguments()
-    if verbose:
-        print "Verbose output has been requested.\n"
+#    logger = logging.getLogger('simple_example')
+    logger = logging.getLogger(__name__)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s:%(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    args = get_arguments(logger)
+    sys.exit("DEBUG 1")
+    quality_arg = -1
+    distance_arg = -1
 #    print "Input: '%s'\nOutput: '%s'\n" % (infile_arg, outfile_arg)
     (header, data_handle) = get_header(verbose, infile)
+
     source_data = parse_input(verbose, header, data_handle)
     specimen, filtered_data = filter_data(verbose, source_data, quality, distance)
     fasta_data = convert_to_fasta(verbose, specimen, filtered_data)
