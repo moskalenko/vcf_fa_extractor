@@ -2,12 +2,12 @@
 """This script will extract snps from a vcf file and produce a multi-fasta
 output with extracted reference and all variant sequences.
 Author: Oleksandr Moskalenko <om@hpc.ufl.edu>
-Version: 1.2
-Date: 2014-07-25
+Version: 1.3
+Date: 2014-08-01
 """
 import os, sys, operator, logging
 
-version="1.2"
+version="1.3"
 
 def get_arguments():
     parser = argparse.ArgumentParser(usage='%(prog)s [options] -i input_file [-o output_file]', epilog="You must at least provide the input file name")
@@ -18,8 +18,8 @@ def get_arguments():
     parser.add_argument('-d', '--distance', dest='distance', type=int,
             default=-1, help="Distance filter (minimal distance between bases)")
     parser.add_argument('-s', '--snpeff', dest='snpeff', help="Parse SnpEFF produced extended INFO field and output a codon alignment into the specified file.")
-    parser.add_argument('-v', '--verbose', action='store_true', default=False,
-            help="Verbose output")
+    parser.add_argument('-n', '--nostop', action='store_true', dest='nostop', default=False, help="Do not output a codon if the SnpEFF Effect is 'STOP_GAINED'.")
+    parser.add_argument('-v', '--verbose', action='store_true', default=False, help="Verbose output")
     args = parser.parse_args()
     if (not args.infile):
         parser.print_help()
@@ -74,9 +74,9 @@ def parse_snpeff_info(args, data):
     #Effect (Effect_Impact | Functional_Class | Codon_Change | Amino_Acid_change| Amino_Acid_length | Gene_Name | Gene_BioType | Coding | Transcript | Exon)
     for info_item in info_list:
         if info_item.startswith("EFF"):
-            if args.verbose:
-                logger.debug("EFF record:")
-                print info_item
+#            if args.verbose:
+#                logger.debug("EFF record:")
+#                print info_item
             effect = info_item.split("=")[1].split("(")[0]
             effect_data_src = info_item.split("(")[1][:-1]
             effect_data_list = effect_data_src.split("|")
@@ -124,6 +124,8 @@ def parse_input(args, header, fh):
     output_header = list(operator.itemgetter(0,1,3,4,5)(header))
     output_header.extend(['EFF_REF', 'EFF_ALT'])
     samples = operator.itemgetter(slice(9,None))(header)
+    if args.verbose:
+        print "Number of samples in the header: {0}".format(len(samples))
     output_header.extend(samples)
     if args.verbose:
         logger.debug("Output header")
@@ -141,15 +143,19 @@ def parse_input(args, header, fh):
         if args.verbose:
             logger.debug("Not producing the data table")
     all_data.append(output_header)
+    all_sample_counter = 0
+    eff_sample_counter = 0
     for line in fh:
+        stop_gained = False
         if not line.startswith('#'):
+            all_sample_counter += 1
             try:
                 all_samples_data = []
                 data_table = []
                 raw_record = line.strip().split('\t')
-                if args.verbose:
-                    logger.debug("Raw record")
-                    print raw_record
+#                if args.verbose:
+#                    logger.debug("Raw record")
+#                    print raw_record
                 common_sample_data = list(operator.itemgetter(0,1,3,4,5)(raw_record))
                 all_samples_data.extend(common_sample_data)
                 data_table.extend(common_sample_data[:2])
@@ -160,8 +166,15 @@ def parse_input(args, header, fh):
                     if not ref_codon and not alt_codon:
                         no_eff_data_sample_names.append("_".join(all_samples_data[:2]))
                     data_table.extend(table_output)
-                #Replace alt with SNPEFF codon in common data if asked for at index [3]
-                    all_samples_data.extend([ref_codon, alt_codon])
+                    if args.nostop:
+                        if table_output[0] == 'STOP_GAINED':
+                            print "Found STOP_GAINED:", ", ".join(table_output)
+                            stop_gained = True
+                    #Replace alt with SNPEFF codon in common data if asked for at index [3]
+                    if stop_gained:
+                        all_samples_data.extend(['', ''])
+                    else:
+                        all_samples_data.extend([ref_codon, alt_codon])
                 else:
                     all_samples_data.extend(['', ''])
                 for i in all_samples_data_raw:
@@ -313,20 +326,20 @@ def convert_to_codon_alignment_fasta(verbose, specimen, filtered_data):
 #        print "DEBUG: EFF codons: '{0}'/'{1}'".format(ref_seq, alt_seq)
         snps = entry[7:]
         if len(specimen) != len(snps):
-            print "Error: Number of specimen in the header and the sequence data for specimen {0} does not match for the following record:"
-            print ", ".join(entry)
+            print "Error: Number of specimen in the header and the sequence data for specimen do not match."
+            print len(specimen), " - ", len(snps)
             sys.exit()
         if not ref_seq and not alt_seq:
-            if verbose:
-                print "Empty EFF field for:"
-                print ", ".join(entry)
+#            if verbose:
+#                print "Empty EFF field for:"
+#                print ", ".join(entry)
             continue
         seq_data["reference"].append(ref_seq)
         for sample in specimen:
             sample_id = specimen.index(sample)
             snp = snps[sample_id]
             if snp == '.':
-                snp_value = ''
+                snp_value = '???'
             else:
                 try:
                     snp = int(snp)
@@ -350,7 +363,9 @@ def convert_to_fasta(verbose, specimen, filtered_data):
         alt_seq = entry[3].strip().split(',')
         snps = entry[7:]
         if len(specimen) != len(snps):
-            sys.exit("Error: Number of specimen in the header and the sequence data does not match.")
+            print "Error: Number of specimen in the header and the sequence data does not match."
+            print len(specimen), " - ", len(snps)
+            sys.exit()
         seq_data["reference"].append(ref_seq)
         for sample in specimen:
             sample_id = specimen.index(sample)

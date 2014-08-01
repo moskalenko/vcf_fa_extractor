@@ -43,3 +43,11 @@ Chromosome | Position | EFF | Sample 1 (yes/no) | Sample 2 (yes,no)
 Where EFF = Effect_Impact | Functional_Class | Codon_Change | Amino_Acid_change| Amino_Acid_length | Gene_Name | Gene_BioType | Coding | Transcript | Exon
 
 GenotypeNum results int the last 2 columns (Sample 1 or 2 'yes')
+
+
+2014-08-01 enhancement
+
+Can you add an option to also omit sites/codons when the EFF=STOP_GAINED. The
+STOP_GAINED codon can't be used in selection analyses but the are need to codon
+phylogenetic models.  Also, if I run the script on a VCF that has ambiguous
+sites, will it add the ??? for the codons like the other script will?
