@@ -5,9 +5,9 @@ Author: Oleksandr Moskalenko <om@hpc.ufl.edu>
 Version: 1.2
 Date: 2014-07-25
 """
-version="1.2"
-
 import os, sys, operator, logging
+
+version="1.2"
 
 def get_arguments():
     parser = argparse.ArgumentParser(usage='%(prog)s [options] -i input_file [-o output_file]', epilog="You must at least provide the input file name")
@@ -17,8 +17,7 @@ def get_arguments():
     parser.add_argument('-q', '--quality', dest='quality', type=int, default=-1, help="QUAL cutoff, optionsl")
     parser.add_argument('-d', '--distance', dest='distance', type=int,
             default=-1, help="Distance filter (minimal distance between bases)")
-    parser.add_argument('-s', '--snpeff', action="store_true", dest='snpeff',
-            default=False, help="Parse SnpEFF produced extended INFO field")
+    parser.add_argument('-s', '--snpeff', dest='snpeff', help="Parse SnpEFF produced extended INFO field and output a codon alignment into the specified file.")
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
             help="Verbose output")
     args = parser.parse_args()
@@ -69,12 +68,10 @@ def parse_snpeff_info(args, data):
     info_list = data.split(";")
     snpeff_output = []
     table_output = []
+    empty_snpeff_info_list = [''] * 13
     alt_allele = ""
     #output for the sample table file
     #Effect (Effect_Impact | Functional_Class | Codon_Change | Amino_Acid_change| Amino_Acid_length | Gene_Name | Gene_BioType | Coding | Transcript | Exon)
-    if args.verbose:
-        logger.debug("INFO record:")
-        print ", ".join(info_list)
     for info_item in info_list:
         if info_item.startswith("EFF"):
             if args.verbose:
@@ -84,14 +81,9 @@ def parse_snpeff_info(args, data):
             effect_data_src = info_item.split("(")[1][:-1]
             effect_data_list = effect_data_src.split("|")
             allele_change_str_src = effect_data_list[2]
-            alt_allele_str_src = allele_change_str_src.split("/")[1]
-            for character in alt_allele_str_src:
-                if character in 'ACTG':
-                    alt_allele = character
-                    if args.verbose:
-                        msg = "ALT character from EFF is {0}".format(alt_allele)
-                        logger.debug(msg)
-                    break
+            [ ref_codon, alt_codon ] = allele_change_str_src.split("/")
+            ref_codon.strip()
+            alt_codon.strip()
             # table output - 
             # Effect_Impact | Functional_Class | Codon_Change | Amino_Acid_change| Amino_Acid_length | Gene_Name | Gene_BioType | Coding | Transcript | Exon | SampleOne | SampleTwo
             table_output.append(effect)
@@ -103,7 +95,12 @@ def parse_snpeff_info(args, data):
             if args.verbose:
                 logger.debug("Table data")
                 print table_output
-    return (alt_allele, table_output)
+            break
+    else:
+        [ ref_codon, alt_codon ] = ['', '']
+        table_output=empty_snpeff_info_list
+#    print "EFF Parser output: '{0}' - '{1}' - '{2}'".format(ref_codon, alt_codon, table_output)
+    return (ref_codon, alt_codon, table_output)
 
 def parse_input(args, header, fh):
     """
@@ -123,8 +120,9 @@ def parse_input(args, header, fh):
 #    example = """gi|87125858|gb| CP000255.1|	2863880	.	A	G	2960.84	.	AB=0;ABP=0;AC=6;AF=0.222222;AN=27;AO=102 ;CIGAR=1X;DP=7273;DPRA=0.509969;EPP=215.9;EPPR=4.53721;HWE=-0;LEN=1;MEANALT= 1;MQM=13.8725;MQMR=54.9476;NS=27;NUMALT=1;ODDS=74.4167;PAIRED=0.990196;PAIRE DR=0.992468;RO=7169;RPP=215.9;RPPR=15070.6;RUN=1;SAP=224.5;SRP=3.11965;TYPE= snp;XAI=0.00886278;XAM=0.00929294;XAS=0.000430161;XRI=1.23666e-05;XRM=0.0008 01506;XRS=0.000789139;technology.ILLUMINA=1;BVAR	GT:GQ:DP:RO:QR:AO:QA:GL	0:5 0000:414:414:15906:0:0:0,-1431.92	0:50000:334:334:12912:0:0:0,-1162.47	1:500 00:29:0:0:29:1056:-95.4041,0	0:50000:269:269:10281:0:0:0,-925.672	1:50000:14 :0:0:14:519:-47.0807,0	0:50000:441:441:16891:0:0:0,-1520.57	0:50000:311:311: 11916:0:0:0,-1072.82	1:50000:15:1:40:14:493:-44.7221,-4	0:50000:334:333:1278 3:1:24:-2.4,-1150.85	1:50000:14:0:0:14:521:-47.2621,0	0:50000:345:345:13321: 0:0:0,-1199.28	0:50000:181:181:6920:0:0:0,-623.182	0:50000:336:336:12882:0:0 :0,-1159.76	0:50000:423:423:16229:0:0:0,-1460.99	0:50000:283:283:10902:0:0:0 ,-981.565	1:50000:16:2:65:14:529:-47.9879,-6.175	0:50000:514:514:19905:0:0:0 ,-1791.84	0:50000:377:374:14472:3:118:-11.0133,-1302.87	0:50000:368:367:1410 1:1:39:-3.9,-1269.47	0:50000:267:267:10237:0:0:0,-921.713	0:50000:226:226:87 00:0:0:0,-783.385	1:50000:10:0:0:10:362:-32.942,0	0:50000:377:376:14405:1:9: -0.9,-1296.83	0:50000:334:333:12842:1:41:-4.1,-1156.17	0:50000:262:262:10073 :0:0:0,-906.954	0:50000:495:493:19004:0:0:-3.895,-1714.43	0:50000:284:284:10 969:0:0:0,-987.596"""
     all_data = []
     all_data_table = []
+    no_eff_data_sample_names = []
     output_header = list(operator.itemgetter(0,1,3,4,5)(header))
-    output_header.append('EFF_ALT')
+    output_header.extend(['EFF_REF', 'EFF_ALT'])
     samples = operator.itemgetter(slice(9,None))(header)
     output_header.extend(samples)
     if args.verbose:
@@ -158,12 +156,14 @@ def parse_input(args, header, fh):
                 all_samples_data_raw = operator.itemgetter(slice(9,None))(raw_record)
                 info_data_raw_str = raw_record[7]
                 if args.snpeff:
-                    alt_allele, table_output = parse_snpeff_info(args, info_data_raw_str)
+                    ref_codon, alt_codon, table_output = parse_snpeff_info(args, info_data_raw_str)
+                    if not ref_codon and not alt_codon:
+                        no_eff_data_sample_names.append("_".join(all_samples_data[:2]))
                     data_table.extend(table_output)
                 #Replace alt with SNPEFF codon in common data if asked for at index [3]
-                    all_samples_data.append(alt_allele)
+                    all_samples_data.extend([ref_codon, alt_codon])
                 else:
-                    all_samples_data.append('N')
+                    all_samples_data.extend(['', ''])
                 for i in all_samples_data_raw:
                     all_samples_data.append(i.strip().split(':')[0])
 #                all_samples_data.append(info_data_raw_str)
@@ -177,12 +177,46 @@ def parse_input(args, header, fh):
     if args.verbose:
         num_all_entries = len(all_data) - 1
         print "Read %d entries from the input file.\n" % num_all_entries
-    return all_data, all_data_table
+    return all_data, all_data_table, no_eff_data_sample_names
 
-def write_output(verbose, outfile, data):
-    fh = open(outfile, 'w')
-    for line in data:
-        fh.write(",".join(line) + os.linesep)
+def write_fasta_file(verbose, filename, data):
+    if verbose:
+        print "Writing fasta data to {0} file".format(filename)
+    try:
+        fh = open(filename, 'w')
+    except:
+        sys.exit("Cannot open fasta alignment file for writing.")
+    reference_list = data["reference"]
+    reference_fa = "".join(reference_list)
+    fh.write('>reference\n')
+    fh.write(reference_fa)
+    fh.write("\n")
+    for specimen in data:
+        if specimen != 'reference':
+            specimen_name = ">" + specimen + "\n"
+            specimen_fa = "".join(data[specimen]) + "\n"
+            fh.write(specimen_name)
+            fh.write(specimen_fa)
+    fh.close()
+
+def write_codon_alignment_output(verbose, filename, data):
+    if verbose:
+        print "Writing the fasta formatted codon alignment file to '%s' file\n" % filename
+    try:
+        fh = open(filename, 'w')
+    except:
+        sys.exit("Cannot open codon alignment file for writing.")
+    reference_list = data["reference"]
+    reference_fa = "".join(reference_list)
+    fh.write('>reference\n')
+    fh.write(reference_fa)
+    fh.write("\n")
+    for specimen in data:
+        if specimen != 'reference':
+            specimen_name = ">" + specimen + "\n"
+            specimen_fa = "".join(data[specimen]) + "\n"
+            fh.write(specimen_name)
+            fh.write(specimen_fa)
     fh.close()
 
 def write_data_table(args, data):
@@ -246,11 +280,6 @@ def distance_filter(verbose, distance, original_data):
         else:
             discarded_data.append(mid)
             discarded_distances.append(mid[1])
-#            if verbose:
-#                print "Distance filter triggered on:"
-#            print "Previous: ", tail
-#                print "Discarded: ", mid
-#            print "Next: ", head
         tail = mid
         mid = head
         head = entry
@@ -272,8 +301,46 @@ def distance_filter(verbose, distance, original_data):
         print "After the distance filtering %d entries remain. %d entries were discarded\n" % (num_filtered_entries, num_discarded_entries)
     return filtered_data
 
-def convert_to_fasta(verbose, header, filtered_data):
+def convert_to_codon_alignment_fasta(verbose, specimen, filtered_data):
     samples = {}
+    seq_data = {}
+    for sample in specimen:
+        seq_data[sample] = []
+    seq_data["reference"] = []
+    for entry in filtered_data:
+        ref_seq = entry[5].strip()
+        alt_seq = entry[6].strip()
+#        print "DEBUG: EFF codons: '{0}'/'{1}'".format(ref_seq, alt_seq)
+        snps = entry[7:]
+        if len(specimen) != len(snps):
+            print "Error: Number of specimen in the header and the sequence data for specimen {0} does not match for the following record:"
+            print ", ".join(entry)
+            sys.exit()
+        if not ref_seq and not alt_seq:
+            if verbose:
+                print "Empty EFF field for:"
+                print ", ".join(entry)
+            continue
+        seq_data["reference"].append(ref_seq)
+        for sample in specimen:
+            sample_id = specimen.index(sample)
+            snp = snps[sample_id]
+            if snp == '.':
+                snp_value = ''
+            else:
+                try:
+                    snp = int(snp)
+                except:
+                    sys.exit("Error: SNP call is not a '.' or an integer in the (0-n) range.")
+                if snp == 0:
+                    snp_value = ref_seq
+                else:
+                    snp_value = alt_seq
+            seq_data[sample].append(snp_value)
+    return seq_data
+
+def convert_to_fasta(verbose, specimen, filtered_data):
+    fasta_data = []
     seq_data = {}
     for sample in specimen:
         seq_data[sample] = []
@@ -281,17 +348,13 @@ def convert_to_fasta(verbose, header, filtered_data):
     for entry in filtered_data:
         ref_seq = entry[2].strip()
         alt_seq = entry[3].strip().split(',')
-        eff_alt = entry[5]
-#        print "Alt seq: {0}, SNPEff seq: {1}".format(alt_seq, eff_alt)
-        snps = entry[6:]
-        if len(header) != len(snps):
+        snps = entry[7:]
+        if len(specimen) != len(snps):
             sys.exit("Error: Number of specimen in the header and the sequence data does not match.")
         seq_data["reference"].append(ref_seq)
-        for sample in header:
-            sample_id = header.index(sample)
+        for sample in specimen:
+            sample_id = specimen.index(sample)
             snp = snps[sample_id]
-#            if verbose:
-#                print "SNP: %s" % snp
             if snp == '.':
                 snp_value = '?'
             else:
@@ -301,9 +364,6 @@ def convert_to_fasta(verbose, header, filtered_data):
                     sys.exit("Error: SNP call is not a '.' or an integer in the (0-n) range.")
                 if snp == 0:
                     snp_value = ref_seq
-                elif eff_alt:
-                    print 'EFF ALT {0}'.format(eff_alt)
-                    snp_value = eff_alt
                 else:
                     alt_snp = snp - 1
                     snp_value = alt_seq[alt_snp]
@@ -316,9 +376,10 @@ def filter_data(args, source_data):
     reference = []
     header = source_data[0]
     original_data = source_data[1:]
-    specimen = header[6:]
+    specimen = header[7:]
     sample_names = ", ".join(specimen)
     if args.verbose:
+        print "Common data: %s\n" % ", ".join(header[:7])
         print "Sample names: %s\n" % sample_names
     #Quality filter
     if quality != -1:
@@ -332,27 +393,8 @@ def filter_data(args, source_data):
         distance_filtered_data = quality_filtered_data
     return (specimen, distance_filtered_data)
 
-def write_output(verbose, filename, data):
-    if verbose:
-        print "Writing the fasta formatted data to the '%s' file\n" % filename
-    try:
-        fh = open(filename, 'w')
-    except:
-        sys.exit("Cannot open output file for writing.")
-    reference_list = data["reference"]
-    reference_fa = "".join(reference_list)
-    fh.write('>reference\n')
-    fh.write(reference_fa)
-    fh.write("\n")
-    for specimen in data:
-        if specimen != 'reference':
-            specimen_name = ">" + specimen + "\n"
-            specimen_fa = "".join(data[specimen]) + "\n"
-            fh.write(specimen_name)
-            fh.write(specimen_fa)
-    fh.close()
-
 if __name__=='__main__':
+    import sys
     logger = logging.getLogger(__name__)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
@@ -361,7 +403,7 @@ if __name__=='__main__':
     logger.addHandler(ch)
     logger.setLevel('DEBUG')
     if sys.version_info < (2,7,0):
-        logger.error("You need python 2.7 or later to run this script\n")
+        print ("You need python 2.7 or later to run this script.")
         sys.exit(1)
     import argparse
     args = get_arguments()
@@ -372,10 +414,13 @@ if __name__=='__main__':
     header = get_header(args.verbose, input_fh)
     # CHROM, POS, ID, REF, ALT, QUAL, FILTER, INFO, FORMAT, SAMPLES*
     input_fh.seek(0, 0)
-    source_data, data_table = parse_input(args, header, input_fh)
+    source_data, data_table, no_eff_data_samples = parse_input(args, header, input_fh)
 #    if args.verbose:
 #        logger.debug("All data before filtering")
-#        print source_data
+#        for snp in source_data:
+#            print snp
+#        print "These {0} samples do not have EFF data:".format(len(no_eff_data_samples))
+#        print ", ".join(no_eff_data_samples)
 #        logger.debug("Data table")
 #        print data_table
     if args.table:
@@ -386,7 +431,13 @@ if __name__=='__main__':
 #        print specimen
 #        logger.debug('Filtered data:')
 #        print filtered_data
+#        sys.exit()
+    #VERIFIED ---------------------------------------------------------
     fasta_data = convert_to_fasta(args.verbose, specimen, filtered_data)
-    write_output(args.verbose, args.outfile, fasta_data)
+    write_fasta_file(args.verbose, args.outfile, fasta_data)
+    if args.snpeff:
+        codon_alignment = convert_to_codon_alignment_fasta(args.verbose, specimen, filtered_data)
+        write_codon_alignment_output(args.verbose, args.snpeff, codon_alignment)
     if args.verbose:
-        print "Done processing the vcf file. Good bye!\n"
+        print "Done processing the vcf file {0}. Good bye!\n".format(args.infile)
+    sys.exit(0)

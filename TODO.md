@@ -25,6 +25,8 @@ EFF=NON_SYNONYMOUS_CODING(MODERATE|MISSENSE|aCc/aTc|T34I|197|Vch1786_I0077||CODI
 ccA/ccT
     ---
 
+Large letter is the base to use.
+
 EFFECT = multiple columns from parsing the EFF tag
 (http://snpeff.sourceforge.net/SnpEff_manual.html#output). Parse them out into
 separate columns.
