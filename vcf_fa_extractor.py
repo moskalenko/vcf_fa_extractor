@@ -9,6 +9,9 @@ import os, sys, operator, logging, argparse
 
 __version="1.4"
 
+args = ''
+
+
 def get_arguments():
     parser = argparse.ArgumentParser(usage='%(prog)s [options] -i input_file [-o output_file]', epilog="You must at least provide the input file name")
     parser.add_argument('-i', '--input', dest='infile', help="Input vcf file")
@@ -22,6 +25,7 @@ def get_arguments():
     parser.add_argument('-v', '--verbose', action='store_true', default=False, help="Verbose output")
     parser.add_argument('-g', '--debug', action='store_true', default=False, help=argparse.SUPPRESS)
     parser.add_argument('--version', action='version', version='%(prog)s Version: {version}'.format(version=__version))
+    global args
     args = parser.parse_args()
     if (not args.infile):
         parser.print_help()
@@ -348,6 +352,8 @@ def convert_to_codon_alignment_fasta(args, specimen, filtered_data):
                 try:
                     snp = int(snp)
                 except:
+                    if args.debug:
+                        logger.debug("SNP: {0}".format(snp))
                     sys.exit("Error: SNP call is not a '.' or an integer in the (0-n) range.")
                 if snp == 0:
                     snp_value = ref_seq
@@ -402,14 +408,18 @@ def parse_snp(snp):
     snps: ['.', '.', '.', '1/1', '.', '.', '.', '.', '.', '.', '.', '1/1', '.', '1/1']
 
     """
+    log = args.log
     if snp == '.':
         return snp
     if '/' in snp:
         gt_list = snp.split('/')
+        snp = gt_list[0]
     #Default is to return the first genotype, add an argument to modify this behavior.
+    snp_type = type(snp)
     try:
-        genotype = int(gt_list[0])
+        genotype = int(snp)
     except:
+        log.debug("Trouble parsing SNP: '{0}'".format(snp))
         sys.exit("Error: Genotype is not '.' or an integer in the (0-n) range.")
     return genotype
 
